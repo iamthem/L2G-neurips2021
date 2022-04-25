@@ -17,43 +17,30 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
 # parser for hyper-parameters
-parser = argparse.ArgumentParser()
+# parser = argparse.ArgumentParser()
 
-# synthetic data:
-parser.add_argument('--graph_type', type=str, default='BA', help='{BA, ER, SBM, WS}.')
-parser.add_argument('--graph_size', type=int, default=20, help='{20, 50, 100}.')
+# # synthetic data:
+# parser.add_argument('--graph_type', type=str, default='BA', help='{BA, ER, SBM, WS}.')
+# parser.add_argument('--graph_size', type=int, default=20, help='{20, 50, 100}.')
 
-# model pars:
-parser.add_argument('--num_unroll', type=int, default=20, help='Number of Unrolling Layers.')
-parser.add_argument('--n_hid', type=int, default=32, help='hidden neurons in TopoDiffVAE.')
-parser.add_argument('--n_latent', type=int, default=16, help='difference latent dimension in TopoDiffVAE.')
-parser.add_argument('--n_nodeFeat', type=int, default=1, help='num of node features (default is degree) of encoder (GCN) in TopoDiffVAE.')
-parser.add_argument('--n_graphFeat', type=int, default=16, help='dimension of graph encoding .')
-parser.add_argument('--kl_hyper', type=float, default=1.0, help='the hyperparameter beta of KL in beta-VAE.')
-parser.add_argument('--topo_thres', type=float, default=1e-04, help='the structural threshold of topoVAE')
+# # model pars:
+# parser.add_argument('--num_unroll', type=int, default=20, help='Number of Unrolling Layers.')
+# parser.add_argument('--n_hid', type=int, default=32, help='hidden neurons in TopoDiffVAE.')
+# parser.add_argument('--n_latent', type=int, default=16, help='difference latent dimension in TopoDiffVAE.')
+# parser.add_argument('--n_nodeFeat', type=int, default=1, help='num of node features (default is degree) of encoder (GCN) in TopoDiffVAE.')
+# parser.add_argument('--n_graphFeat', type=int, default=16, help='dimension of graph encoding .')
+# parser.add_argument('--kl_hyper', type=float, default=1.0, help='the hyperparameter beta of KL in beta-VAE.')
+# parser.add_argument('--topo_thres', type=float, default=1e-04, help='the structural threshold of topoVAE')
 
-# training pars:
-parser.add_argument('--batch_size', type=int, default=32)
-parser.add_argument('--n_epochs', type=int, default=500, help='Number of epochs to train.')
-parser.add_argument('--lr', type=float, default=1e-02, help='Start learning rate in Adam.')
-parser.add_argument('--lr_decay', type=float, default=0.95, help='decay factor of learning rate.')
-args = parser.parse_args()
+# # training pars:
+# parser.add_argument('--batch_size', type=int, default=32)
+# parser.add_argument('--n_epochs', type=int, default=500, help='Number of epochs to train.')
+# parser.add_argument('--lr', type=float, default=1e-02, help='Start learning rate in Adam.')
+# parser.add_argument('--lr_decay', type=float, default=0.95, help='decay factor of learning rate.')
+# args = parser.parse_args()
 
 
 
-# %%
-
-logging.basicConfig(filename='logs/L2G_{}_m{}_x{}.log'.format(args.graph_type, args.graph_size, args.num_unroll),
-                    filemode='w',
-                    format='%(asctime)s - %(message)s',
-                    datefmt='%d-%b-%y %H:%M:%S',
-                    level=logging.INFO)
-
-console = logging.StreamHandler()
-console.setLevel(logging.INFO)
-formatter = logging.Formatter('%(asctime)s | %(message)s', datefmt='%d-%b-%y %H:%M:%S')
-console.setFormatter(formatter)
-logging.getLogger().addHandler(console)
 
 # %%
 reload(src.utils_data)
@@ -72,6 +59,20 @@ data = src.utils_data.generate_WS_parallel(num_samples=64 * 100,
 
 with open('data/dataset_{}_{}nodes.pickle'.format(graph_type, graph_size), 'wb') as handle:
     pickle.dump(data, handle, protocol=4)
+
+# %%
+
+logging.basicConfig(filename='logs/L2G_{}_m{}_x{}.log'.format(graph_type, graph_size, num_unroll),
+                    filemode='w',
+                    format='%(asctime)s - %(message)s',
+                    datefmt='%d-%b-%y %H:%M:%S',
+                    level=logging.INFO)
+
+console = logging.StreamHandler()
+console.setLevel(logging.INFO)
+formatter = logging.Formatter('%(asctime)s | %(message)s', datefmt='%d-%b-%y %H:%M:%S')
+console.setFormatter(formatter)
+logging.getLogger().addHandler(console)
 
 # %%
 
@@ -95,8 +96,8 @@ lr_decay = 0.95
 net = src.models.learn2graph(num_unroll, graph_size, n_hid,
                   n_latent, n_nodeFeat, n_graphFeat).to(device)
 
-optimizer = optim.Adam(net.parameters(), lr=args.lr)
-scheduler = lr_scheduler.ExponentialLR(optimizer, args.lr_decay)
+optimizer = optim.Adam(net.parameters(), lr=lr)
+scheduler = lr_scheduler.ExponentialLR(optimizer, lr_decay)
 
 # %%
 z, w_gt_batch = next(iter(train_loader))
@@ -172,9 +173,9 @@ for epoch in range(n_epochs):
 
 # %%
 
-save_path = 'saved_model/L2G_{}{}_unroll{}.pt'.format(args.graph_type,
-                                                      args.graph_size,
-                                                      args.num_unroll)
+save_path = 'saved_model/L2G_{}{}_unroll{}.pt'.format(graph_type,
+                                                      graph_size,
+                                                      num_unroll)
 
 torch.save({'net_state_dict': net.state_dict(),
             'optimiser_state_dict': optimizer.state_dict()
@@ -197,8 +198,8 @@ for z, w_gt_batch in test_loader:
     adj_batch = w_gt_batch.clone()
     adj_batch[adj_batch > 0] = 1
 
-    w_list = net.validation(z, threshold=args.topo_thres)
-    w_pred = torch.clamp(w_list[:, args.num_unroll - 1, :], min=0)
+    w_list = net.validation(z, threshold=topo_thres)
+    w_pred = torch.clamp(w_list[:, num_unroll - 1, :], min=0)
 
     loss_mean = gmse_loss_batch_mean(w_pred, w_gt_batch)
     loss_pred = gmse_loss_batch(w_pred, w_gt_batch)
@@ -212,8 +213,8 @@ final_pred_loss, final_pred_loss_ci, _, _ = mean_confidence_interval(loss_all_da
 logging.info(mean_confidence_interval(loss_all_data, 0.95))
 aps_auc = binary_metrics_batch(adj_batch, w_pred, device)
 
-layer_loss_mean = [mean_confidence_interval(layer_loss_batch[:,i].detach().cpu().numpy(), confidence=0.95)[0] for i in range(args.num_unroll)]
-layer_loss_mean_ci = [mean_confidence_interval(layer_loss_batch[:,i].detach().cpu().numpy(), confidence=0.95)[1] for i in range(args.num_unroll)]
+layer_loss_mean = [mean_confidence_interval(layer_loss_batch[:,i].detach().cpu().numpy(), confidence=0.95)[0] for i in range(num_unroll)]
+layer_loss_mean_ci = [mean_confidence_interval(layer_loss_batch[:,i].detach().cpu().numpy(), confidence=0.95)[1] for i in range(num_unroll)]
 
 logging.info('layerwise test loss :{}'.format(layer_loss_mean))
 
@@ -236,9 +237,9 @@ result = {
 
 
 # %%
-result_path = 'saved_results/L2G_{}{}_unroll{}.pt'.format(args.graph_type,
-                                                          args.graph_size,
-                                                          args.num_unroll)
+result_path = 'saved_results/L2G_{}{}_unroll{}.pt'.format(graph_type,
+                                                          graph_size,
+                                                          num_unroll)
 
 
 with open(result_path, 'wb') as handle:
