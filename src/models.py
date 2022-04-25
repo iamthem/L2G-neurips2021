@@ -186,7 +186,6 @@ class learn2graph(nn.Module):
 
         z = check_tensor(z, device)
 
-        pdb.set_trace()
         m = int((1 / 2) * (1 + math.sqrt(1 + 8 * l))) # Vector form -> number of nodes 
         D = coo_to_sparseTensor(get_degree_operator(m)).to(device)
 

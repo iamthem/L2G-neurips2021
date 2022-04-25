@@ -10,6 +10,7 @@ from importlib import reload
 import argparse
 import time
 import pdb
+import pickle
 import logging
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -43,15 +44,15 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
 # %%
-reload(src.utils_data)
 graph_type = 'WS'
 edge_type = 'lognormal'
 graph_size = 50
+num_unroll = 20
 graph_hyper = {'k': 5,
                'p': 0.3}
 
-data = src.utils_data.generate_WS_parallel(num_samples=64 * 100,
-                            num_signals=10,
+data = src.utils_data.generate_WS_parallel(num_samples= 8064,
+                            num_signals=50,
                             num_nodes=graph_size,
                             graph_hyper=graph_hyper,
                             weighted=edge_type,
@@ -79,12 +80,9 @@ logging.getLogger().addHandler(console)
 batch_size = 32
 
 data_dir = 'data/dataset_{}_{}nodes.pickle'.format(graph_type, graph_size)
-train_loader, val_loader, test_loader = data_loading(data_dir, batch_size=batch_size)
+train_loader, val_loader, test_loader = src.utils_data.data_loading(data_dir, batch_size=batch_size)
 
 # %%
-
-reload(src.models)
-num_unroll = 20
 n_hid = 32
 n_latent = 16
 n_nodeFeat = 1
@@ -100,15 +98,11 @@ optimizer = optim.Adam(net.parameters(), lr=lr)
 scheduler = lr_scheduler.ExponentialLR(optimizer, lr_decay)
 
 # %%
-z, w_gt_batch = next(iter(train_loader))
-w_list, vae_loss, vae_kl, _ = net.forward(z, w_gt_batch, threshold=topo_thres, kl_hyper=kl_hyper)
-
-# %%
 
 # Training:
 
 dur = []
-n_epochs = 1 
+n_epochs = 30 
 topo_thres = 1e-04
 kl_hyper = 1
 
@@ -128,8 +122,9 @@ for epoch in range(n_epochs):
         this_batch_size = w_gt_batch.size()[0]
 
         optimizer.zero_grad()
-        pdb.set_trace()
         w_list, vae_loss, vae_kl, _ = net.forward(z, w_gt_batch, threshold=topo_thres, kl_hyper=kl_hyper)
+
+        if w_list.shape[0] == 12 or w_gt_batch.shape[0] == 12: pdb.set_trace()
 
         unrolling_loss = torch.mean(
             torch.stack([acc_loss(w_list[i, :, :], w_gt_batch[i, :], dn=0.9) for i in range(batch_size)])
