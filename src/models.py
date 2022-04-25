@@ -1,6 +1,7 @@
 
 import torch
 import torch.nn as nn
+import pdb 
 import torch.nn.functional as F
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -184,7 +185,9 @@ class learn2graph(nn.Module):
         batch_size, l = z.size()
 
         z = check_tensor(z, device)
-        m = int((1 / 2) * (1 + math.sqrt(1 + 8 * l)))
+
+        pdb.set_trace()
+        m = int((1 / 2) * (1 + math.sqrt(1 + 8 * l))) # Vector form -> number of nodes 
         D = coo_to_sparseTensor(get_degree_operator(m)).to(device)
 
         # initialise:

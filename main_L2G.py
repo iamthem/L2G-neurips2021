@@ -1,17 +1,19 @@
-
+# %%
 import torch
 import torch.optim as optim
 import torch.optim.lr_scheduler as lr_scheduler
 
-from src.models import *
+import src.models 
 from src.utils import *
-from src.utils_data import *
+import src.utils_data 
+from importlib import reload
 import argparse
 import time
+import pdb
 import logging
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-#%%
+# %%
 
 
 # parser for hyper-parameters
@@ -39,7 +41,7 @@ args = parser.parse_args()
 
 
 
-#%%
+# %%
 
 logging.basicConfig(filename='logs/L2G_{}_m{}_x{}.log'.format(args.graph_type, args.graph_size, args.num_unroll),
                     filemode='w',
@@ -53,33 +55,66 @@ formatter = logging.Formatter('%(asctime)s | %(message)s', datefmt='%d-%b-%y %H:
 console.setFormatter(formatter)
 logging.getLogger().addHandler(console)
 
-#%%
+# %%
+reload(src.utils_data)
+graph_type = 'WS'
+edge_type = 'lognormal'
+graph_size = 50
+graph_hyper = {'k': 5,
+               'p': 0.3}
+
+data = src.utils_data.generate_WS_parallel(num_samples=64 * 100,
+                            num_signals=10,
+                            num_nodes=graph_size,
+                            graph_hyper=graph_hyper,
+                            weighted=edge_type,
+                            weight_scale=True)
+
+with open('data/dataset_{}_{}nodes.pickle'.format(graph_type, graph_size), 'wb') as handle:
+    pickle.dump(data, handle, protocol=4)
+
+# %%
 
 batch_size = 32
 
-data_dir = 'data/dataset_{}_{}nodes.pickle'.format(args.graph_type, args.graph_size)
+data_dir = 'data/dataset_{}_{}nodes.pickle'.format(graph_type, graph_size)
 train_loader, val_loader, test_loader = data_loading(data_dir, batch_size=batch_size)
 
-#%%
+# %%
 
-net = learn2graph(args.num_unroll, args.graph_size, args.n_hid,
-                  args.n_latent, args.n_nodeFeat, args.n_graphFeat).to(device)
+reload(src.models)
+num_unroll = 20
+n_hid = 32
+n_latent = 16
+n_nodeFeat = 1
+n_graphFeat = 16
+
+lr = 1e-02
+lr_decay = 0.95
+
+net = src.models.learn2graph(num_unroll, graph_size, n_hid,
+                  n_latent, n_nodeFeat, n_graphFeat).to(device)
 
 optimizer = optim.Adam(net.parameters(), lr=args.lr)
 scheduler = lr_scheduler.ExponentialLR(optimizer, args.lr_decay)
 
-logging.info(net)
+# %%
+z, w_gt_batch = next(iter(train_loader))
+w_list, vae_loss, vae_kl, _ = net.forward(z, w_gt_batch, threshold=topo_thres, kl_hyper=kl_hyper)
 
-#%%
+# %%
 
 # Training:
 
 dur = []
+n_epochs = 1 
+topo_thres = 1e-04
+kl_hyper = 1
 
 epoch_train_gmse = []
 epoch_val_gmse = []
 
-for epoch in range(args.n_epochs):
+for epoch in range(n_epochs):
 
     train_unrolling_loss, train_vae_loss, train_kl_loss, train_gmse, val_gmse = [], [], [], [], []
 
@@ -92,7 +127,8 @@ for epoch in range(args.n_epochs):
         this_batch_size = w_gt_batch.size()[0]
 
         optimizer.zero_grad()
-        w_list, vae_loss, vae_kl, _ = net.forward(z, w_gt_batch, threshold=args.topo_thres, kl_hyper=args.kl_hyper)
+        pdb.set_trace()
+        w_list, vae_loss, vae_kl, _ = net.forward(z, w_gt_batch, threshold=topo_thres, kl_hyper=kl_hyper)
 
         unrolling_loss = torch.mean(
             torch.stack([acc_loss(w_list[i, :, :], w_gt_batch[i, :], dn=0.9) for i in range(batch_size)])
@@ -102,7 +138,7 @@ for epoch in range(args.n_epochs):
         loss.backward()
         optimizer.step()
 
-        w_pred = w_list[:, args.num_unroll - 1, :]
+        w_pred = w_list[:, num_unroll - 1, :]
         gmse = gmse_loss_batch_mean(w_pred, w_gt_batch)
 
         train_gmse.append(gmse.item())
@@ -117,8 +153,8 @@ for epoch in range(args.n_epochs):
         z = z.to(device)
         w_gt_batch = w_gt_batch.to(device)
 
-        w_list = net.validation(z, threshold=args.topo_thres)
-        w_pred = torch.clamp(w_list[:, args.num_unroll - 1, :], min=0)
+        w_list = net.validation(z, threshold=topo_thres)
+        w_pred = torch.clamp(w_list[:, num_unroll - 1, :], min=0)
         loss = gmse_loss_batch_mean(w_pred, w_gt_batch)
         val_gmse.append(loss.item())
 
@@ -134,7 +170,7 @@ for epoch in range(args.n_epochs):
     epoch_val_gmse.append(np.mean(val_gmse))
 
 
-#%%
+# %%
 
 save_path = 'saved_model/L2G_{}{}_unroll{}.pt'.format(args.graph_type,
                                                       args.graph_size,
@@ -147,7 +183,7 @@ torch.save({'net_state_dict': net.state_dict(),
 
 logging.info('model saved at: {}'.format(save_path))
 
-#%%
+# %%
 
 # Test:
 
@@ -182,7 +218,7 @@ layer_loss_mean_ci = [mean_confidence_interval(layer_loss_batch[:,i].detach().cp
 logging.info('layerwise test loss :{}'.format(layer_loss_mean))
 
 
-#%%
+# %%
 
 
 result = {
@@ -199,7 +235,7 @@ result = {
 }
 
 
-#%%
+# %%
 result_path = 'saved_results/L2G_{}{}_unroll{}.pt'.format(args.graph_type,
                                                           args.graph_size,
                                                           args.num_unroll)
@@ -210,4 +246,4 @@ with open(result_path, 'wb') as handle:
 
 logging.info('results saved at: {}'.format(result_path))
 
-#%%
+# %%

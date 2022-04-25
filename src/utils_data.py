@@ -5,7 +5,8 @@ from torch.utils.data import random_split
 import networkx as nx
 import scipy
 import pickle
-import multiprocess
+import pdb
+#import multiprocess
 from functools import partial
 
 from src.utils import *
@@ -21,6 +22,7 @@ def data_loading(dir_dataset, batch_size = None, train_prop=0.8):
     num_samples = len(dataset['z'])
     w = [squareform(dataset['W'][i].A) for i in range(num_samples)]
 
+    squareform
     test_size = 64
     num_samples -= 64
     train_size = int(train_prop * num_samples)
@@ -159,10 +161,10 @@ def _generate_WS_to_parallel(i, num_nodes, num_signals, graph_hyper, weighted, w
     return z, W_GT
 
 def generate_WS_parallel(num_samples, num_nodes, num_signals, graph_hyper, weighted, weight_scale):
-    n_cpu = multiprocess.cpu_count() - 2
-    pool = multiprocess.Pool(n_cpu)
+    # n_cpu = multiprocess.cpu_count() - 2
+    # pool = multiprocess.Pool(n_cpu)
 
-    z_multi, W_multi = zip(*pool.map(partial(_generate_WS_to_parallel,
+    z_multi, W_multi = zip(*map(partial(_generate_WS_to_parallel,
                                              num_nodes = num_nodes,
                                              num_signals = num_signals,
                                              graph_hyper = graph_hyper,
